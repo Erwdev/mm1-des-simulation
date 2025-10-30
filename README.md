@@ -17,10 +17,10 @@ Program ini mengimplementasikan Discrete Event Simulation untuk model antrian M/
 
 ## 🎓 Anggota Kelompok
 
-- [Nama Anggota 1] - [NIM] - [Role: Coding/Testing]
-- [Nama Anggota 2] - [NIM] - [Role: Analisis Data]
-- [Nama Anggota 3] - [NIM] - [Role: Dokumentasi]
-- [Nama Anggota 4] - [NIM] - [Role: Presentasi]
+-[Benedictus Erwin Widianto] - [23/520176/PA/22350] - [Role: Arrival System & Event Handler - Core DES Logic]
+-[Irfan] - [-----] - [Role: Departure System & Control Flow - Multi-Replication & I/O]
+-[La Tania Nur Tenka] - [23/511404/PA/21787] - [Role: Statistics & Validation - QA Testing & Documentation]
+
 
 ## 🛠️ Requirements
 
