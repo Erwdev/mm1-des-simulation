@@ -12,8 +12,6 @@
 #include <string>
 #include <iomanip>
 
-using namespace std;
-
 // ============================================================================
 // SECTION 1: ENUMS & CONSTANTS
 // ============================================================================
@@ -57,7 +55,7 @@ struct State {
     int numInSystem;               // Total customers in system (queue + service)
     bool serverBusy;               // Server status
     double nextArrivalTime;        // Scheduled next arrival time
-    queue<double> arrivalTimes;    // Queue of customer arrival times
+    std::queue<double> arrivalTimes;    // Queue of customer arrival times
     
     // TODO ANGGOTA 1: Initialize in constructor
     // TODO ANGGOTA 2: Add any additional state if needed
@@ -94,7 +92,7 @@ struct Params {
     int seed;                   // Random seed
     int queueCap;               // Queue capacity (-1 = unlimited)
     TerminationMode termMode;   // Termination mode
-    string outdir;              // Output directory
+    std::string outdir;              // Output directory
     
     // TODO ANGGOTA 2: Add constructor with default values
     // TODO ANGGOTA 2: Add validation method (lambda < mu, etc)
@@ -123,7 +121,7 @@ struct RepResult {
 // ============================================================================
 class RNG {
 private:
-    mt19937_64 generator;
+    std::mt19937_64 generator;
     
 public:
     // TODO ANGGOTA 1: Constructor with seed
@@ -156,7 +154,7 @@ private:
     Stats stats;
     Params params;
     RNG rng;
-    priority_queue<Event> FEL;  // Future Event List
+    std::priority_queue<Event> FEL;  // Future Event List
     int nextCustomerID;
     
 public:
@@ -180,7 +178,7 @@ public:
         // 3. Clear FEL
         // 4. Schedule first arrival at time = exponential(lambda)
         
-        cout << "[INIT] Simulation initialized" << endl;
+        std::cout << "[INIT] Simulation initialized" << std::endl;
     }
     
     // ------------------------------------------------------------------------
@@ -218,7 +216,7 @@ public:
         //       - If full: reject (track rejections)
         // 7. numInSystem++
         
-        cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << endl;
+        std::cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << std::endl;
     }
     
     // ------------------------------------------------------------------------
@@ -243,7 +241,7 @@ public:
         //    b. If queue empty:
         //       - Set serverBusy = false
         
-        cout << "[DEPARTURE] Customer " << e.customerID << " at t=" << e.time << endl;
+        std::cout << "[DEPARTURE] Customer " << e.customerID << " at t=" << e.time << std::endl;
     }
     
     // ------------------------------------------------------------------------
@@ -346,7 +344,7 @@ public:
 // RUN MULTIPLE REPLICATIONS
 // TODO ANGGOTA 2: Loop over replications
 // ----------------------------------------------------------------------------
-vector<RepResult> runReplications(Params params, int numReps) {
+std::vector<RepResult> runReplications(Params params, int numReps) {
     // TODO ANGGOTA 2:
     // 1. Create vector to store results
     // 2. Loop for i = 1 to numReps:
@@ -357,10 +355,10 @@ vector<RepResult> runReplications(Params params, int numReps) {
     //    e. Print progress
     // 3. Return vector of results
     
-    vector<RepResult> results;
+    std::vector<RepResult> results;
     
     for (int i = 1; i <= numReps; i++) {
-        cout << "\n=== REPLICATION " << i << " / " << numReps << " ===" << endl;
+        std::cout << "\n=== REPLICATION " << i << " / " << numReps << " ===" << std::endl;
         
         Params p = params;
         p.seed = params.seed + i;  // Different seed per rep
@@ -370,8 +368,8 @@ vector<RepResult> runReplications(Params params, int numReps) {
         res.repID = i;
         results.push_back(res);
         
-        cout << "Rep " << i << " complete: AvgQ=" << res.avgQ 
-             << " Util=" << res.utilization << endl;
+        std::cout << "Rep " << i << " complete: AvgQ=" << res.avgQ 
+             << " Util=" << res.utilization << std::endl;
     }
     
     return results;
@@ -386,7 +384,7 @@ vector<RepResult> runReplications(Params params, int numReps) {
 // SUMMARY STATISTICS STRUCT
 // ----------------------------------------------------------------------------
 struct Summary {
-    string metric;
+    std::string metric;
     double mean;
     double stdDev;
     double ci_lower;
@@ -398,7 +396,7 @@ struct Summary {
 // CALCULATE MEAN
 // TODO ANGGOTA 3: Calculate average from vector
 // ----------------------------------------------------------------------------
-double calculateMean(vector<double>& data) {
+double calculateMean(std::vector<double>& data) {
     // TODO ANGGOTA 3: Sum all values, divide by count
     double sum = 0.0;
     for (double val : data) {
@@ -411,7 +409,7 @@ double calculateMean(vector<double>& data) {
 // CALCULATE STANDARD DEVIATION
 // TODO ANGGOTA 3: Calculate sample std dev
 // ----------------------------------------------------------------------------
-double calculateStdDev(vector<double>& data, double mean) {
+double calculateStdDev(std::vector<double>& data, double mean) {
     // TODO ANGGOTA 3:
     // 1. Calculate sum of squared deviations: Σ(xi - mean)²
     // 2. Divide by (n-1) for sample variance
@@ -429,7 +427,7 @@ double calculateStdDev(vector<double>& data, double mean) {
 // CALCULATE CONFIDENCE INTERVAL
 // TODO ANGGOTA 3: Calculate 95% CI using t-distribution
 // ----------------------------------------------------------------------------
-Summary calculateCI(vector<double>& data, string metricName) {
+Summary calculateCI(std::vector<double>& data, std::string metricName) {
     // TODO ANGGOTA 3:
     // 1. Calculate mean
     // 2. Calculate std dev
@@ -458,17 +456,17 @@ Summary calculateCI(vector<double>& data, string metricName) {
 // COMPUTE ALL SUMMARIES
 // TODO ANGGOTA 3: Generate summary for all metrics
 // ----------------------------------------------------------------------------
-vector<Summary> computeSummaries(vector<RepResult>& results) {
+std::vector<Summary> computeSummaries(std::vector<RepResult>& results) {
     // TODO ANGGOTA 3:
     // 1. Extract each metric into separate vector
     //    - avgQ, utilization, avgDelay, avgWait
     // 2. Calculate CI for each metric
     // 3. Return vector of summaries
     
-    vector<Summary> summaries;
+    std::vector<Summary> summaries;
     
     // Extract avgQ
-    vector<double> avgQs;
+    std::vector<double> avgQs;
     for (auto& r : results) {
         avgQs.push_back(r.avgQ);
     }
@@ -488,16 +486,16 @@ vector<Summary> computeSummaries(vector<RepResult>& results) {
 // WRITE PER-REPLICATION CSV
 // TODO ANGGOTA 2: Export detailed results
 // ----------------------------------------------------------------------------
-void writePerRepCSV(vector<RepResult>& results, string filename) {
+void writePerRepCSV(std::vector<RepResult>& results, std::string filename) {
     // TODO ANGGOTA 2:
     // 1. Open file for writing
     // 2. Write header: RepID,AvgQ,Utilization,AvgDelay,AvgWait,NumServed,SimTime
     // 3. Write each result as CSV row
     // 4. Close file
     
-    ofstream file(filename);
+    std::ofstream file(filename);
     if (!file.is_open()) {
-        cerr << "Error: Cannot open " << filename << endl;
+        std::cerr << "Error: Cannot open " << filename << std::endl;
         return;
     }
     
@@ -516,23 +514,23 @@ void writePerRepCSV(vector<RepResult>& results, string filename) {
     }
     
     file.close();
-    cout << "Written: " << filename << endl;
+    std::cout << "Written: " << filename << std::endl;
 }
 
 // ----------------------------------------------------------------------------
 // WRITE SUMMARY CSV
 // TODO ANGGOTA 2: Export confidence intervals
 // ----------------------------------------------------------------------------
-void writeSummaryCSV(vector<Summary>& summaries, string filename) {
+void writeSummaryCSV(std::vector<Summary>& summaries, std::string filename) {
     // TODO ANGGOTA 2:
     // 1. Open file for writing
     // 2. Write header: Metric,Mean,StdDev,CI_Lower,CI_Upper,CI_Width
     // 3. Write each summary as CSV row
     // 4. Close file
     
-    ofstream file(filename);
+    std::ofstream file(filename);
     if (!file.is_open()) {
-        cerr << "Error: Cannot open " << filename << endl;
+        std::cerr << "Error: Cannot open " << filename << std::endl;
         return;
     }
     
@@ -550,7 +548,7 @@ void writeSummaryCSV(vector<Summary>& summaries, string filename) {
     }
     
     file.close();
-    cout << "Written: " << filename << endl;
+    std::cout << "Written: " << filename << std::endl;
 }
 
 // ============================================================================
@@ -586,13 +584,13 @@ Params parseArguments(int argc, char* argv[]) {
     
     // Parse arguments
     for (int i = 1; i < argc; i++) {
-        string arg = argv[i];
+        std::string arg = argv[i];
         
         if (arg == "--lambda" && i+1 < argc) {
-            p.lambda = stod(argv[++i]);
+            p.lambda = std::stod(argv[++i]);
         }
         else if (arg == "--mu" && i+1 < argc) {
-            p.mu = stod(argv[++i]);
+            p.mu = std::stod(argv[++i]);
         }
         // TODO: Add other parameters
         else if (arg == "--help") {
@@ -603,7 +601,7 @@ Params parseArguments(int argc, char* argv[]) {
     
     // Validate
     if (p.lambda >= p.mu) {
-        cerr << "WARNING: System unstable (lambda >= mu)" << endl;
+        std::cerr << "WARNING: System unstable (lambda >= mu)" << std::endl;
     }
     
     return p;
@@ -615,13 +613,13 @@ Params parseArguments(int argc, char* argv[]) {
 // ----------------------------------------------------------------------------
 void printHelp() {
     // TODO ANGGOTA 2: Print all available parameters and examples
-    cout << "Usage: ./des_sim [OPTIONS]\n";
-    cout << "\nOptions:\n";
-    cout << "  --lambda <value>    Arrival rate (default: 0.9)\n";
-    cout << "  --mu <value>        Service rate (default: 1.0)\n";
+    std::cout << "Usage: ./des_sim [OPTIONS]\n";
+    std::cout << "\nOptions:\n";
+    std::cout << "  --lambda <value>    Arrival rate (default: 0.9)\n";
+    std::cout << "  --mu <value>        Service rate (default: 1.0)\n";
     // TODO: Add all other options
-    cout << "\nExample:\n";
-    cout << "  ./des_sim --lambda 0.9 --mu 1.0 --maxServed 20000 --reps 10\n";
+    std::cout << "\nExample:\n";
+    std::cout << "  ./des_sim --lambda 0.9 --mu 1.0 --maxServed 20000 --reps 10\n";
 }
 
 // ============================================================================
@@ -633,7 +631,7 @@ void printHelp() {
 // VALIDATE WITH THEORETICAL RESULTS
 // TODO ANGGOTA 3: Compare simulation vs M/M/1 theory
 // ----------------------------------------------------------------------------
-void validateResults(Params p, vector<Summary>& summaries) {
+void validateResults(Params p, std::vector<Summary>& summaries) {
     // TODO ANGGOTA 3:
     // 1. Calculate theoretical M/M/1 results:
     //    rho = lambda / mu
@@ -650,10 +648,10 @@ void validateResults(Params p, vector<Summary>& summaries) {
     double W_theory = 1.0 / (p.mu - p.lambda);
     double Wq_theory = rho / (p.mu - p.lambda);
     
-    cout << "\n=== THEORETICAL VS SIMULATION ===" << endl;
-    cout << fixed << setprecision(4);
-    cout << "Rho (utilization): " << rho << endl;
-    cout << "L (theory): " << L_theory << endl;
+    std::cout << "\n=== THEORETICAL VS SIMULATION ===" << std::endl;
+    std::cout << std::fixed << std::setprecision(4);
+    std::cout << "Rho (utilization): " << rho << std::endl;
+    std::cout << "L (theory): " << L_theory << std::endl;
     // TODO: Print simulation results and deviation
 }
 
@@ -661,14 +659,14 @@ void validateResults(Params p, vector<Summary>& summaries) {
 // VERIFY LITTLE'S LAW
 // TODO ANGGOTA 3: Check L = lambda * W
 // ----------------------------------------------------------------------------
-void verifyLittlesLaw(Params p, vector<Summary>& summaries) {
+void verifyLittlesLaw(Params p, std::vector<Summary>& summaries) {
     // TODO ANGGOTA 3:
     // 1. Get L (avgQ) and W (avgDelay) from summaries
     // 2. Calculate L_calculated = lambda * W
     // 3. Compare with L from simulation
     // 4. Print verification result
     
-    cout << "\n=== LITTLE'S LAW VERIFICATION ===" << endl;
+    std::cout << "\n=== LITTLE'S LAW VERIFICATION ===" << std::endl;
     // TODO: Implement verification
 }
 
@@ -678,32 +676,32 @@ void verifyLittlesLaw(Params p, vector<Summary>& summaries) {
 // ============================================================================
 
 int main(int argc, char* argv[]) {
-    cout << "==================================================" << endl;
-    cout << "  M/M/1 Queue Discrete Event Simulation" << endl;
-    cout << "==================================================" << endl;
+    std::cout << "==================================================" << std::endl;
+    std::cout << "  M/M/1 Queue Discrete Event Simulation" << std::endl;
+    std::cout << "==================================================" << std::endl;
     
     // TODO ANGGOTA 2: Parse command line arguments
     Params params = parseArguments(argc, argv);
     int numReps = 10;  // TODO: Get from CLI
     
     // Print configuration
-    cout << "\nConfiguration:" << endl;
-    cout << "  Lambda: " << params.lambda << endl;
-    cout << "  Mu: " << params.mu << endl;
-    cout << "  Rho: " << (params.lambda / params.mu) << endl;
-    cout << "  Replications: " << numReps << endl;
+    std::cout << "\nConfiguration:" << std::endl;
+    std::cout << "  Lambda: " << params.lambda << std::endl;
+    std::cout << "  Mu: " << params.mu << std::endl;
+    std::cout << "  Rho: " << (params.lambda / params.mu) << std::endl;
+    std::cout << "  Replications: " << numReps << std::endl;
     
     // TODO ANGGOTA 2: Run replications
-    vector<RepResult> results = runReplications(params, numReps);
+    std::vector<RepResult> results = runReplications(params, numReps);
     
     // TODO ANGGOTA 3: Compute summaries
-    vector<Summary> summaries = computeSummaries(results);
+    std::vector<Summary> summaries = computeSummaries(results);
     
     // TODO ANGGOTA 3: Print results
-    cout << "\n=== SUMMARY STATISTICS ===" << endl;
+    std::cout << "\n=== SUMMARY STATISTICS ===" << std::endl;
     for (auto& s : summaries) {
-        cout << s.metric << ": " << s.mean 
-             << " [" << s.ci_lower << ", " << s.ci_upper << "]" << endl;
+        std::cout << s.metric << ": " << s.mean 
+             << " [" << s.ci_lower << ", " << s.ci_upper << "]" << std::endl;
     }
     
     // TODO ANGGOTA 2: Write CSV files
@@ -714,7 +712,7 @@ int main(int argc, char* argv[]) {
     validateResults(params, summaries);
     verifyLittlesLaw(params, summaries);
     
-    cout << "\n=== SIMULATION COMPLETE ===" << endl;
+    std::cout << "\n=== SIMULATION COMPLETE ===" << std::endl;
     
     return 0;
 }
