@@ -11,7 +11,7 @@
 #include <cmath>
 #include <string>
 #include <iomanip>
-
+const int MAX_ITER = 1000000;
 // ============================================================================
 // SECTION 1: ENUMS & CONSTANTS
 // ============================================================================
@@ -30,35 +30,45 @@ enum TerminationMode {
 // SECTION 2: STRUCTS
 // ============================================================================
 
-// ----------------------------------------------------------------------------
-// EVENT STRUCT
-// Owner: ANGGOTA 1
-// TODO: Implement operator< for priority_queue (min-heap)
-// ----------------------------------------------------------------------------
+
 struct Event {
     EventType type;
     double time;
     int customerID;
     
-    // TODO ANGGOTA 1: Implement operator< (reversed for min-heap)
-    // Format: bool operator<(const Event& other) const { ... }
-    // Hint: return time > other.time; (reversed!)
+    // bool: return type, operator overloading for <  comparison 
+    // passing by reference const Event 
+    bool operator<(const Event& other) const {
+        return time > other.time;
+    }
+
 };
 
-// ----------------------------------------------------------------------------
-// STATE STRUCT
-// Owner: ANGGOTA 1 (arrival-related) + ANGGOTA 2 (service-related)
-// TODO: Complete state variables
-// ----------------------------------------------------------------------------
 struct State {
     double clock;                  // Current simulation time
     int numInSystem;               // Total customers in system (queue + service)
     bool serverBusy;               // Server status
     double nextArrivalTime;        // Scheduled next arrival time
     std::queue<double> arrivalTimes;    // Queue of customer arrival times
-    
-    // TODO ANGGOTA 1: Initialize in constructor
-    // TODO ANGGOTA 2: Add any additional state if needed
+    // secra otomatis empty di awal queue
+    State() {
+        clock = 0.0;
+        numInSystem = 0;
+        serverBusy = false;
+        nextArrivalTime = 0.0;
+    }
+
+    void reset(double clock = 0.0, int numInSystem = 0, bool serverBusy = false, double nextArrivalTime = 0.0) {
+        this->clock = clock;
+        this->numInSystem = numInSystem;
+        this->serverBusy = serverBusy;
+        this->nextArrivalTime = nextArrivalTime;
+
+        while (!arrivalTimes.empty()) {
+            arrivalTimes.pop();
+        }//looping to clear arrival time queue
+    }
+
 };
 
 // ----------------------------------------------------------------------------
@@ -71,11 +81,23 @@ struct Stats {
     double areaQ;            // Time-weighted queue length integral
     double areaB;            // Time-weighted server busy integral
     int numServed;           // Count of departed customers
-    int numArrived;          // Count of arrived customers
+    int numArrived;     // Count of arrived customers       
+    int numRejected;         //count of rejected customer (if queue capacity is exhausted the server is full )
     double warmupEndTime;    // Time when warmup period ends
     
     // TODO ANGGOTA 2: Add warmup-related tracking
     // TODO ANGGOTA 2: Initialize in constructor
+    
+    // anggota 2 left to implement the initializer
+
+    void reset(double totalDelay = 0.0, double areaQ = 0.0, double areaB = 0.0, int numServed = 0, int numArrived = 0, double warmupEndTime = 0.0) {
+        this->totalDelay = totalDelay;
+        this->areaQ = areaQ;
+        this->areaB = areaB;
+        this->numServed = numServed;
+        this->numArrived = numArrived;
+        this->warmupEndTime = warmupEndTime;
+    }
 };
 
 // ----------------------------------------------------------------------------
@@ -115,6 +137,8 @@ struct RepResult {
     // TODO ANGGOTA 2: Add constructor
 };
 
+// STRUCT SECTION ENDS HERE
+
 // ============================================================================
 // SECTION 3: RANDOM NUMBER GENERATOR CLASS
 // Owner: ANGGOTA 1
@@ -122,26 +146,23 @@ struct RepResult {
 class RNG {
 private:
     std::mt19937_64 generator;
-    
+    // using mt19937_64 as instructed 
+    // instancing generator with mt19937_64 type
 public:
-    // TODO ANGGOTA 1: Constructor with seed
     RNG(int seed) {
-        // TODO: Initialize generator with seed
+        generator.seed(seed);
     }
-    
-    // TODO ANGGOTA 1: Generate exponential random variable
+
     // Formula: -ln(U) / rate, where U ~ Uniform(0,1)
     double exponential(double rate) {
-        // TODO: Implement inverse transform method
-        // uniform_real_distribution<double> dist(0.0, 1.0);
-        // double u = dist(generator);
-        // return -log(u) / rate;
-        return 0.0; // PLACEHOLDER
-    }
-    
-    // TODO ANGGOTA 1: (Optional) Test method to verify distribution
-    void test(double rate, int samples = 1000) {
-        // TODO: Generate samples and print mean
+        // create uniform distribution 0, 1
+        std::uniform_real_distribution<double> dist(0.0, 1.0);
+        double u = dist(generator);
+        if ( rate <= 0){
+            throw std::invalid_argument("Rate of incoming must be >= 0");
+        }
+        if ( u == 0.0 ) u = std::numeric_limits<double>::min(); //avoiding log(0)
+        return -log(u) / rate;
     }
 };
 
@@ -171,14 +192,23 @@ public:
     // Owner: ANGGOTA 1
     // TODO: Reset state, stats, schedule first arrival
     // ------------------------------------------------------------------------
-    void init() {
-        // TODO ANGGOTA 1: 
-        // 1. Reset state (clock=0, numInSystem=0, serverBusy=false, etc)
-        // 2. Reset stats (all zeros)
-        // 3. Clear FEL
-        // 4. Schedule first arrival at time = exponential(lambda)
+    void init(State& state, Stats& stats) {
+        // Reset state
         
+        state.reset();
+        stats.reset();
+        // clear future event list(berisi priority queue kedatangan )
+        while (!FEL.empty()) {
+            FEL.pop();
+        }
+        std::cout << "[INIT] state, stats, FEL cleared" << std::endl;
+        // first arrival time generated from exponential distribution
+        double firstArrivalTime = rng.exponential(params.lambda);
+        scheduleEvent(ARRIVAL, firstArrivalTime);
+        nextCustomerID = 1;
         std::cout << "[INIT] Simulation initialized" << std::endl;
+        std::cout << "[INIT] First arrival scheduled at t=" << firstArrivalTime <<std::endl;
+        
     }
     
     // ------------------------------------------------------------------------
@@ -200,23 +230,36 @@ public:
     // TODO: Process arrival event
     // ------------------------------------------------------------------------
     void handleArrival(Event e) {
-        // TODO ANGGOTA 1:
-        // 1. Save previous clock time
-        // 2. Update clock to event time
-        // 3. Call updateTimeIntegrals(previousTime)
-        // 4. Increment numArrived
-        // 5. Schedule NEXT arrival (time = clock + exponential(lambda))
-        // 6. Check server status:
-        //    a. If server IDLE:
-        //       - Set serverBusy = true
-        //       - Schedule DEPARTURE (time = clock + exponential(mu))
-        //    b. If server BUSY:
-        //       - Check queue capacity (if queueCap != -1)
-        //       - If not full: add arrival time to queue
-        //       - If full: reject (track rejections)
-        // 7. numInSystem++
-        
-        std::cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << std::endl;
+        double prev_clock = state.clock;
+        state.clock = e.time;
+        updateTimeIntegrals(prev_clock);
+        stats.numArrived++;
+
+        double next_arrival = state.clock + rng.exponential(params.lambda);
+
+        scheduleEvent(ARRIVAL, next_arrival);
+        if (!state.serverBusy ){
+            state.serverBusy = true;
+            state.numInSystem++;
+            state.arrivalTimes.push(state.clock);//record arrival time
+            
+            double departure_time = state.clock + rng.exponential(params.mu);
+            scheduleEvent(DEPARTURE, departure_time);
+
+            std::cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << " -> SERVICE, depart at t=" << departure_time << std::endl;
+        }
+        else {
+            if (params.queueCap == -1 || state.numInSystem < params.queueCap) {
+                state.arrivalTimes.push(state.clock);
+                state.numInSystem++;
+                // adding arrival time into the state clock queue
+                std::cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << " -> QUEUE, number in system=" << state.numInSystem << std::endl;
+            }else{
+                // queue is full, rejecting customer 
+                stats.numRejected++;
+                std::cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << " -> REJECTED full both queue and server" << std::endl;
+            }
+        }
     }
     
     // ------------------------------------------------------------------------
@@ -286,10 +329,51 @@ public:
         // 3. Calculate final statistics
         // 4. Return RepResult
         
-        init();
+        init(state, stats);
+        std::cout << "\n===STARTING SIMULATION===" << std::endl;
+        bool MAX_ITER_REACHED = false;
+        int iter = 0;
+        while (!shouldTerminate()){
+            if (FEL.empty()) {
+                std::cerr << "[ERROR] FEL is empty but simulation not terminated " << std::endl;//error handling 
+                break;
+            }
+
+            Event currentEvent = FEL.top(); //query the top item on the list 
+            FEL.pop();
+            if (!isWarmupComplete() && isWarmupComplete()) {
+                stats.warmupEndTime = state.clock;
+                std::cout << "[WARMUP COMPLETE] Warmup period ended at t=" << stats.warmupEndTime << std::endl;
+            }
+            if(currentEvent.type == ARRIVAL){
+                handleArrival(currentEvent);
+            }
+            else if (currentEvent.type == DEPARTURE) {
+                handleDeparture(currentEvent);
+            }
+
+            if(stats.numArrived % 1000 == 0) {
+                std::cout << "[PROGRESS]ITER:"<< iter << " Arrived: " << stats.numArrived 
+                          << ", Served: " << stats.numServed 
+                          << ", Rejected: " << stats.numRejected 
+                          << ", Clock: " << state.clock << std::endl;
+            }
+            iter++;
+            if(iter >= MAX_ITER ){
+                std::cout <<'[WARNING] Max iteration reached!' << std::endl;
+                MAX_ITER_REACHED = true;
+                break;
+            }
+        }
         
         // MAIN LOOP HERE
-        
+        // will display final stats after a while of simulation 
+        std::cout << "\n=== SIMULATION ENDED ===" << std::endl;
+        std::cout << "Final Clock: " << state.clock << std::endl;
+        std::cout << "Total Arrived: " << stats.numArrived << std::endl;
+        std::cout << "Total Served: " << stats.numServed << std::endl;
+        std::cout << "Total Rejected: " << stats.numRejected << std::endl;
+
         return computeResults();
     }
     
