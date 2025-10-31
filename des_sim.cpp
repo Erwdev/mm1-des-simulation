@@ -308,17 +308,7 @@ public:
         //    avgDelay = totalDelay / numServed
         //    avgWait = avgDelay - (1.0 / mu)
         // 3. Create and return RepResult
-        
-        RepResult res;
-        res.repID = 0;
-        res.avgQ = 0.0;
-        res.utilization = 0.0;
-        res.avgDelay = 0.0;
-        res.avgWait = 0.0;
-        res.numServed = stats.numServed;
-        res.simTime = state.clock;
-        
-        return res;
+
     }
     
     // ------------------------------------------------------------------------
@@ -327,11 +317,7 @@ public:
     // ------------------------------------------------------------------------
     void scheduleEvent(EventType type, double time) {
         // TODO ANGGOTA 1: Create event and push to FEL
-        Event e;
-        e.type = type;
-        e.time = time;
-        e.customerID = nextCustomerID++;
-        FEL.push(e);
+  
     }
 };
 
@@ -355,23 +341,7 @@ std::vector<RepResult> runReplications(Params params, int numReps) {
     //    e. Print progress
     // 3. Return vector of results
     
-    std::vector<RepResult> results;
-    
-    for (int i = 1; i <= numReps; i++) {
-        std::cout << "\n=== REPLICATION " << i << " / " << numReps << " ===" << std::endl;
-        
-        Params p = params;
-        p.seed = params.seed + i;  // Different seed per rep
-        
-        DES sim(p);
-        RepResult res = sim.run();
-        res.repID = i;
-        results.push_back(res);
-        
-        std::cout << "Rep " << i << " complete: AvgQ=" << res.avgQ 
-             << " Util=" << res.utilization << std::endl;
-    }
-    
+
     return results;
 }
 
@@ -398,11 +368,7 @@ struct Summary {
 // ----------------------------------------------------------------------------
 double calculateMean(std::vector<double>& data) {
     // TODO ANGGOTA 3: Sum all values, divide by count
-    double sum = 0.0;
-    for (double val : data) {
-        sum += val;
-    }
-    return sum / data.size();
+
 }
 
 // ----------------------------------------------------------------------------
@@ -415,12 +381,7 @@ double calculateStdDev(std::vector<double>& data, double mean) {
     // 2. Divide by (n-1) for sample variance
     // 3. Return sqrt(variance)
     
-    double sumSq = 0.0;
-    for (double val : data) {
-        sumSq += (val - mean) * (val - mean);
-    }
-    double variance = sumSq / (data.size() - 1);
-    return sqrt(variance);
+
 }
 
 // ----------------------------------------------------------------------------
@@ -436,20 +397,7 @@ Summary calculateCI(std::vector<double>& data, std::string metricName) {
     // 4. Calculate margin of error: t * (stdDev / sqrt(n))
     // 5. CI = [mean - margin, mean + margin]
     
-    Summary s;
-    s.metric = metricName;
-    s.mean = calculateMean(data);
-    s.stdDev = calculateStdDev(data, s.mean);
-    
-    int n = data.size();
-    double t_value = 2.262;  // TODO: Use proper t-value based on n
-    
-    double margin = t_value * (s.stdDev / sqrt(n));
-    s.ci_lower = s.mean - margin;
-    s.ci_upper = s.mean + margin;
-    s.ci_width = 2 * margin;
-    
-    return s;
+
 }
 
 // ----------------------------------------------------------------------------
@@ -463,14 +411,11 @@ std::vector<Summary> computeSummaries(std::vector<RepResult>& results) {
     // 2. Calculate CI for each metric
     // 3. Return vector of summaries
     
-    std::vector<Summary> summaries;
+
     
     // Extract avgQ
-    std::vector<double> avgQs;
-    for (auto& r : results) {
-        avgQs.push_back(r.avgQ);
-    }
-    summaries.push_back(calculateCI(avgQs, "AvgQ"));
+
+    
     
     // TODO: Repeat for other metrics (utilization, avgDelay, avgWait)
     
@@ -493,28 +438,13 @@ void writePerRepCSV(std::vector<RepResult>& results, std::string filename) {
     // 3. Write each result as CSV row
     // 4. Close file
     
-    std::ofstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Error: Cannot open " << filename << std::endl;
-        return;
-    }
     
     // Header
-    file << "RepID,AvgQ,Utilization,AvgDelay,AvgWait,NumServed,SimTime\n";
+   
     
     // Data rows
-    for (auto& r : results) {
-        file << r.repID << ","
-             << r.avgQ << ","
-             << r.utilization << ","
-             << r.avgDelay << ","
-             << r.avgWait << ","
-             << r.numServed << ","
-             << r.simTime << "\n";
-    }
-    
-    file.close();
-    std::cout << "Written: " << filename << std::endl;
+
+
 }
 
 // ----------------------------------------------------------------------------
@@ -528,26 +458,13 @@ void writeSummaryCSV(std::vector<Summary>& summaries, std::string filename) {
     // 3. Write each summary as CSV row
     // 4. Close file
     
-    std::ofstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Error: Cannot open " << filename << std::endl;
-        return;
-    }
+    
     
     // Header
     file << "Metric,Mean,StdDev,CI_Lower,CI_Upper,CI_Width\n";
     
     // Data rows
-    for (auto& s : summaries) {
-        file << s.metric << ","
-             << s.mean << ","
-             << s.stdDev << ","
-             << s.ci_lower << ","
-             << s.ci_upper << ","
-             << s.ci_width << "\n";
-    }
     
-    file.close();
     std::cout << "Written: " << filename << std::endl;
 }
 
@@ -572,38 +489,12 @@ Params parseArguments(int argc, char* argv[]) {
     
     Params p;
     // Default values
-    p.lambda = 0.9;
-    p.mu = 1.0;
-    p.maxServed = 10000;
-    p.horizonT = 10000.0;
-    p.warmup = 1000;
-    p.seed = 12345;
-    p.queueCap = -1;  // unlimited
-    p.termMode = BY_SERVED;
-    p.outdir = "./";
     
     // Parse arguments
-    for (int i = 1; i < argc; i++) {
-        std::string arg = argv[i];
-        
-        if (arg == "--lambda" && i+1 < argc) {
-            p.lambda = std::stod(argv[++i]);
-        }
-        else if (arg == "--mu" && i+1 < argc) {
-            p.mu = std::stod(argv[++i]);
-        }
-        // TODO: Add other parameters
-        else if (arg == "--help") {
-            printHelp();
-            exit(0);
-        }
-    }
+    
     
     // Validate
-    if (p.lambda >= p.mu) {
-        std::cerr << "WARNING: System unstable (lambda >= mu)" << std::endl;
-    }
-    
+  
     return p;
 }
 
@@ -642,11 +533,6 @@ void validateResults(Params p, std::vector<Summary>& summaries) {
     // 2. Compare with simulation results
     // 3. Calculate % deviation
     // 4. Print comparison table
-    
-    double rho = p.lambda / p.mu;
-    double L_theory = rho / (1 - rho);
-    double W_theory = 1.0 / (p.mu - p.lambda);
-    double Wq_theory = rho / (p.mu - p.lambda);
     
     std::cout << "\n=== THEORETICAL VS SIMULATION ===" << std::endl;
     std::cout << std::fixed << std::setprecision(4);
