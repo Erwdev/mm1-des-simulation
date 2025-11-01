@@ -339,7 +339,6 @@ public:
     bool shouldTerminate()
     {
         if (params.termMode == BY_SERVED) {
-            std::cout << stats.numServed << "|" << params.maxServed << std::endl;
             if (stats.numServed >= params.maxServed) {
                 std::cout << "[TERMINATION] Reached max served: " << stats.numServed << std::endl;
                 return true;
