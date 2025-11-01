@@ -426,7 +426,7 @@ std::vector<RepResult> runReplications(Params params, int numReps) {
     // 3. Return vector of results
     
 
-    return results;
+    // return results;
 }
 
 // ============================================================================
@@ -503,7 +503,7 @@ std::vector<Summary> computeSummaries(std::vector<RepResult>& results) {
     
     // TODO: Repeat for other metrics (utilization, avgDelay, avgWait)
     
-    return summaries;
+    // return summaries;
 }
 
 // ============================================================================
@@ -544,8 +544,8 @@ void writeSummaryCSV(std::vector<Summary>& summaries, std::string filename) {
     
     
     
-    // Header
-    file << "Metric,Mean,StdDev,CI_Lower,CI_Upper,CI_Width\n";
+    // // Header
+    // file << "Metric,Mean,StdDev,CI_Lower,CI_Upper,CI_Width\n";
     
     // Data rows
     
@@ -618,11 +618,11 @@ void validateResults(Params p, std::vector<Summary>& summaries) {
     // 3. Calculate % deviation
     // 4. Print comparison table
     
-    std::cout << "\n=== THEORETICAL VS SIMULATION ===" << std::endl;
-    std::cout << std::fixed << std::setprecision(4);
-    std::cout << "Rho (utilization): " << rho << std::endl;
-    std::cout << "L (theory): " << L_theory << std::endl;
-    // TODO: Print simulation results and deviation
+    // std::cout << "\n=== THEORETICAL VS SIMULATION ===" << std::endl;
+    // std::cout << std::fixed << std::setprecision(4);
+    // std::cout << "Rho (utilization): " << rho << std::endl;
+    // std::cout << "L (theory): " << L_theory << std::endl;
+    // // TODO: Print simulation results and deviation
 }
 
 // ----------------------------------------------------------------------------
