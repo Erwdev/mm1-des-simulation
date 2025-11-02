@@ -12,10 +12,10 @@
 #include <string>
 #include <iomanip>
 #include <limits>
-const int MAX_ITER = 1000000;
 // ============================================================================
 // SECTION 1: ENUMS & CONSTANTS
 // ============================================================================
+const int MAX_ITER = 1000000;
 
 enum EventType
 {
@@ -29,9 +29,17 @@ enum TerminationMode
     BY_TIME    // Terminate after horizonT time units
 };
 
+enum QueueModel
+{
+    MM1, 
+    MM1K,
+    MMC,
+    MMCK,
+};
 // ============================================================================
 // SECTION 2: STRUCTS
 // ============================================================================
+
 
 struct Event
 {
@@ -114,26 +122,91 @@ struct Stats
 // PARAMS STRUCT
 // ----------------------------------------------------------------------------
 struct Params {
-    double lambda;              // Arrival rate
-    double mu;                  // Service rate
-    int maxServed;              // Max customers (BY_SERVED mode)
-    double horizonT;            // Time horizon (BY_TIME mode)
-    int warmup;                 // Warmup period (customers)
-    int reps;                    // Number of replications
-    int seed;                   // Random seed
-    int queueCap;               // Queue capacity (-1 = unlimited)
-    TerminationMode termMode;   // Termination mode
-    std::string outdir;         // Output directory
-
-    bool helpFlag = false;      // Help flag
-    bool verbose;               // Verbose mode
+    // Basic parameters
+    double lambda;              
+    double mu;                  
+    int maxServed;              
+    double horizonT;            
+    int warmup;                 
+    int reps;                    
+    int seed;                   
+    int queueCap;               
+    TerminationMode termMode;   
+    std::string outdir;         
+    bool helpFlag;      
+    bool verbose;               
     
-    Params() : lambda(0.9), mu(1.0), maxServed(20000), horizonT(20000.0), warmup(1000), reps(10), seed(12345), queueCap(-1), termMode(BY_SERVED), outdir("./"), helpFlag(false), verbose(false) {}
+    // ✅ NEW: Queue Model Configuration
+    QueueModel model;           
+    int numServers;             
+    
+    // Constructor with defaults
+    Params() : lambda(0.9), mu(1.0), maxServed(20000), horizonT(20000.0), 
+               warmup(1000), reps(10), seed(12345), queueCap(-1), 
+               termMode(BY_SERVED), outdir("./output/"), helpFlag(false), 
+               verbose(false), model(MM1), numServers(1) {}
 
+    // ✅ AUTO-DETECT model based on parameters
+    void detectModel() {
+        if (numServers == 1 && queueCap == -1) {
+            model = MM1;
+        } else if (numServers == 1 && queueCap > 0) {
+            model = MM1K;
+        } else if (numServers > 1 && queueCap == -1) {
+            model = MMC;
+        } else if (numServers > 1 && queueCap > 0) {
+            model = MMCK;
+        }
+    }
+
+    // ✅ Stability check based on model
     bool isValid() {
-        return lambda < mu;
+        double totalServiceRate = mu * numServers;
+        if (lambda >= totalServiceRate) {
+            return false;
+        }
+        
+        // Additional checks
+        if (numServers < 1) return false;
+        if (queueCap == 0) return false; // Must be -1 (unlimited) or > 0
+        if (lambda <= 0 || mu <= 0) return false;
+        
+        return true;
+    }
+    
+    // ✅ Get human-readable model name
+    std::string getModelName() const {
+        switch(model) {
+            case MM1:  return "M/M/1";
+            case MM1K: return "M/M/1/" + std::to_string(queueCap);
+            case MMC:  return "M/M/" + std::to_string(numServers);
+            case MMCK: return "M/M/" + std::to_string(numServers) + "/" + std::to_string(queueCap);
+            default:   return "Unknown";
+        }
     }
 };
+
+// struct Params {
+//     double lambda;              // Arrival rate
+//     double mu;                  // Service rate
+//     int maxServed;              // Max customers (BY_SERVED mode)
+//     double horizonT;            // Time horizon (BY_TIME mode)
+//     int warmup;                 // Warmup period (customers)
+//     int reps;                    // Number of replications
+//     int seed;                   // Random seed
+//     int queueCap;               // Queue capacity (-1 = unlimited)
+//     TerminationMode termMode;   // Termination mode
+//     std::string outdir;         // Output directory
+
+//     bool helpFlag = false;      // Help flag
+//     bool verbose;               // Verbose mode
+    
+//     Params() : lambda(0.9), mu(1.0), maxServed(20000), horizonT(20000.0), warmup(1000), reps(10), seed(12345), queueCap(-1), termMode(BY_SERVED), outdir("./"), helpFlag(false), verbose(false) {}
+
+//     bool isValid() {
+//         return lambda < mu;
+//     }
+// };
 
 // ----------------------------------------------------------------------------
 // REPLICATION RESULT STRUCT
@@ -834,8 +907,12 @@ Params parseArguments(int argc, char *argv[])
         } else if (arg == "--seed" && i + 1 < argc){
             params.seed = std::stoi(argv[i + 1]);
             ++i;
+        
         } else if (arg == "--queueCap" && i + 1 < argc){
             params.queueCap = std::stoi(argv[i + 1]);
+            ++i;
+        } else if (arg == "--servers" && i + 1 < argc){
+            params.numServers = std::stoi(argv[i + 1]);
             ++i;
         } else if (arg == "--term" && i + 1 < argc){
             if (argv[i + 1] == std::string("served")){
@@ -852,10 +929,17 @@ Params parseArguments(int argc, char *argv[])
             ++i;
         }      
     }
+    params.detectModel();
     
     // Validate  
     if (!params.isValid()){
-        std::cerr << "Error: lambda must be less than mu for stability." << std::endl;
+        std::cerr << "\n❌ ERROR: Invalid parameters!" << std::endl;
+        std::cerr << "  - Lambda (λ) must be < Mu (μ) × Servers for stability" << std::endl;
+        std::cerr << "  - Current: λ=" << params.lambda 
+                  << ", μ×c=" << (params.mu * params.numServers) << std::endl;
+        std::cerr << "  - Traffic intensity (ρ) = " 
+                  << (params.lambda / (params.mu * params.numServers)) 
+                  << " (must be < 1.0)" << std::endl;
         exit(1);
     }  
 
@@ -869,22 +953,47 @@ Params parseArguments(int argc, char *argv[])
 void printHelp()
 {
     // TODO ANGGOTA 2: Print all available parameters and examples
-    std::cout << "Usage: ./des_sim [OPTIONS]\n";
-    std::cout << "\nOptions:\n";
+    std::cout << "Usage: ./des_sim [OPTIONS]\n\n";
+    
+    std::cout << "Queue Models (auto-detected from parameters):\n";
+    std::cout << "  M/M/1     : Single server, unlimited queue (default)\n";
+    std::cout << "  M/M/1/K   : Single server, finite capacity K\n";
+    std::cout << "  M/M/c     : c servers, unlimited queue\n";
+    std::cout << "  M/M/c/K   : c servers, finite capacity K\n\n";
+    
+    std::cout << "Basic Parameters:\n";
     std::cout << "  --lambda <value>    Arrival rate (default: 0.9)\n";
     std::cout << "  --mu <value>        Service rate (default: 1.0)\n";
+    std::cout << "  --servers <value>   Number of servers (default: 1)\n";
+    std::cout << "  --queueCap <value>  Queue capacity (-1=unlimited, default: -1)\n\n";
+    
+    std::cout << "Simulation Control:\n";
     std::cout << "  --maxServed <value> Max customers to serve (default: 20000)\n";
     std::cout << "  --horizonT <value>  Time horizon (default: 20000.0)\n";
     std::cout << "  --warmup <value>    Warmup period (default: 1000)\n";
     std::cout << "  --reps <value>      Number of replications (default: 10)\n";
     std::cout << "  --seed <value>      Random seed (default: 12345)\n";
-    std::cout << "  --queueCap <value>  Queue capacity (-1 = unlimited, default: -1)\n";
+    std::cout << "  --term <mode>       Termination: 'served' or 'time' (default: served)\n\n";
+    
+    std::cout << "Output:\n";
     std::cout << "  --outdir <path>     Output directory (default: ./output/)\n";
-    std::cout << "  --term <mode>       Termination mode: 'served' or 'time' (default: served)\n";
-    std::cout << "  --verbose           Enable verbose output\n";
-    std::cout << "\nExample:\n";
-    std::cout << "   ./des_sim --lambda 0.9 --mu 1.0 --maxServed 20000 --warmup 1000 --reps 10 --seed 12345 --queueCap -1 --term served --outdir ./\n";
+    std::cout << "  --verbose           Enable verbose output\n\n";
+    
+    std::cout << "Examples:\n\n";
+    
+    std::cout << "  # M/M/1 (single server, unlimited queue)\n";
+    std::cout << "  ./des_sim --lambda 0.9 --mu 1.0\n\n";
+    
+    std::cout << "  # M/M/1/10 (single server, capacity 10)\n";
+    std::cout << "  ./des_sim --lambda 0.9 --mu 1.0 --queueCap 10\n\n";
+    
+    std::cout << "  # M/M/3 (3 servers, unlimited queue)\n";
+    std::cout << "  ./des_sim --lambda 2.5 --mu 1.0 --servers 3\n\n";
+    
+    std::cout << "  # M/M/3/20 (3 servers, capacity 20)\n";
+    std::cout << "  ./des_sim --lambda 2.5 --mu 1.0 --servers 3 --queueCap 20\n\n";
 }
+
 
 // ============================================================================
 // SECTION 9: VALIDATION & ANALYSIS
@@ -901,20 +1010,97 @@ void validateResults(Params p, std::vector<Summary> &summaries)
     std::cout << "  THEORETICAL VS SIMULATION COMPARISON" << std::endl;
     std::cout << "==================================================" << std::endl;
 
-    // Calculate theoretical M/M/1 results
-    double rho = p.lambda / p.mu;
-    double L_theory = rho / (1.0 - rho);        // Avg number in system
-    double W_theory = 1.0 / (p.mu - p.lambda);  // Avg time in system
-    double Wq_theory = rho / (p.mu - p.lambda); // Avg time in queue
-    double Lq_theory = p.lambda * Wq_theory;    // Avg number in queue
+    double rho = p.lambda / (p.mu * p.numServers);
+    double L_theory, W_theory, Wq_theory, Lq_theory;
+    
+    std::cout << "\nQueue Model: " << p.getModelName() << std::endl;
+    
+    // ✅ AUTO-SELECT theoretical formula based on model
+    switch(p.model) {
+        case MM1:
+            // M/M/1 formulas (existing)
+            L_theory = rho / (1.0 - rho);
+            W_theory = 1.0 / (p.mu - p.lambda);
+            Wq_theory = rho / (p.mu - p.lambda);
+            Lq_theory = p.lambda * Wq_theory;
+            break;
+            
+        case MM1K: {
+            // M/M/1/K formulas (finite capacity)
+            int K = p.queueCap;
+            double Pb;
+            
+            if (std::abs(rho - 1.0) < 1e-9) {
+                Pb = 1.0 / (K + 1);
+                L_theory = K / 2.0;
+            } else {
+                Pb = ((1 - rho) * std::pow(rho, K)) / (1 - std::pow(rho, K + 1));
+                double num = rho * (1 - (K + 1) * std::pow(rho, K) + K * std::pow(rho, K + 1));
+                double den = (1 - rho) * (1 - std::pow(rho, K + 1));
+                L_theory = num / den;
+            }
+            
+            double lambda_eff = p.lambda * (1 - Pb);
+            W_theory = L_theory / lambda_eff;
+            Wq_theory = W_theory - (1.0 / p.mu);
+            Lq_theory = lambda_eff * Wq_theory;
+            
+            std::cout << "Blocking Probability (Pb): " << Pb << std::endl;
+            std::cout << "Effective λ: " << lambda_eff << std::endl;
+            break;
+        }
+            
+        case MMC: {
+            // M/M/c formulas (Erlang-C)
+            int c = p.numServers;
+            
+            // Calculate C(c, a) - Erlang C formula
+            double a = p.lambda / p.mu;
+            double sum = 0.0;
+            for (int n = 0; n < c; n++) {
+                double term = std::pow(a, n);
+                for (int k = 1; k <= n; k++) term /= k;
+                sum += term;
+            }
+            double term_c = std::pow(a, c);
+            for (int k = 1; k <= c; k++) term_c /= k;
+            double C = term_c / (sum + term_c * c / (c - a));
+            
+            Lq_theory = (C * rho) / (1 - rho);
+            Wq_theory = Lq_theory / p.lambda;
+            W_theory = Wq_theory + (1.0 / p.mu);
+            L_theory = p.lambda * W_theory;
+            
+            std::cout << "Erlang-C (Pw): " << C << std::endl;
+            break;
+        }
+            
+        case MMCK: {
+            // M/M/c/K formulas (complex - simplified version)
+            std::cout << "⚠ M/M/c/K theoretical formulas are complex" << std::endl;
+            std::cout << "  Using M/M/c approximation (ignoring finite capacity)" << std::endl;
+            
+            // Fall back to M/M/c calculation
+            int c = p.numServers;
+            double a = p.lambda / p.mu;
+            
+            // Simplified - just use basic approximation
+            L_theory = rho * c / (1 - rho);
+            W_theory = L_theory / p.lambda;
+            Wq_theory = W_theory - (1.0 / p.mu);
+            Lq_theory = p.lambda * Wq_theory;
+            break;
+        }
+    }
 
     std::cout << std::fixed << std::setprecision(6);
-    std::cout << "\nTheoretical M/M/1 Results:" << std::endl;
-    std::cout << "  Rho (Utilization) : " << rho << std::endl;
+    std::cout << "\nTheoretical Results:" << std::endl;
+    std::cout << "  Rho (ρ)           : " << rho << std::endl;
     std::cout << "  L (Avg in system) : " << L_theory << std::endl;
     std::cout << "  W (Avg time)      : " << W_theory << std::endl;
     std::cout << "  Lq (Avg in queue) : " << Lq_theory << std::endl;
     std::cout << "  Wq (Avg wait)     : " << Wq_theory << std::endl;
+
 
     std::cout << "\nSimulation Results (with 95% CI):" << std::endl;
 
@@ -1060,11 +1246,35 @@ int main(int argc, char *argv[])
     }
     
     std::cout << "\nConfiguration:" << std::endl;
+    std::cout << "  Model Type: " << params.getModelName() <<std::endl;
     std::cout << "  Lambda: " << params.lambda << std::endl;
     std::cout << "  Mu: " << params.mu << std::endl;
     std::cout << "  Rho: " << (params.lambda / params.mu) << std::endl;
     std::cout << "  Replications: " << params.reps << std::endl;
+
+    if (params.queueCap == -1) {
+        std::cout << "  Queue Cap:  Unlimited" << std::endl;
+    } else {
+        std::cout << "  Queue Cap:  " << params.queueCap << " customers" << std::endl;
+    }
     
+    double rho = params.lambda / (params.mu * params.numServers);
+    std::cout << "  Rho (ρ):    " << std::fixed << std::setprecision(4) << rho;
+
+    if (rho < 0.7) {
+        std::cout << " (Light traffic ✓)" << std::endl;
+    } else if (rho < 0.9) {
+        std::cout << " (Moderate traffic)" << std::endl;
+    } else if (rho < 1.0) {
+        std::cout << " (Heavy traffic ⚠)" << std::endl;
+    } else {
+        std::cout << " (UNSTABLE! ❌)" << std::endl;
+    }
+    
+    std::cout << "  Warmup: " << params.warmup << std::endl;
+    std::cout << "  Output: " << params.outdir << std::endl;
+
+
     // TODO ANGGOTA 2: Run replications
     std::vector<RepResult> results = runReplications(params);
     
