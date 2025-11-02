@@ -155,7 +155,6 @@ struct Params {
 
 // ----------------------------------------------------------------------------
 // REPLICATION RESULT STRUCT
-// Owner: ANGGOTA 2
 // ----------------------------------------------------------------------------
 struct RepResult
 {
@@ -175,7 +174,6 @@ struct RepResult
 
 // ============================================================================
 // SECTION 3: RANDOM NUMBER GENERATOR CLASS
-// Owner: ANGGOTA 1
 // ============================================================================
 class RNG
 {
@@ -223,7 +221,6 @@ private:
 public:
     // ------------------------------------------------------------------------
     // CONSTRUCTOR
-    // Owner: ALL (call from main)
     // ------------------------------------------------------------------------
     DES(Params p) : params(p), rng(p.seed)
     {
@@ -232,8 +229,6 @@ public:
 
     // ------------------------------------------------------------------------
     // INIT - Initialize simulation
-    // Owner: ANGGOTA 1
-    // TODO: Reset state, stats, schedule first arrival
     // ------------------------------------------------------------------------
     void init()
     {
@@ -266,13 +261,7 @@ public:
         // Check if past warmup period
         if (isWarmupComplete())
         {
-            // Calculate number in queue (excluding server)
-            // int numInQueue = state.numInSystem - (state.serverBusy ? 1 : 0);
-
             // Update area under Q(t) curve (queue length over time)
-            // stats.areaQ += numInQueue * delta;
-
-            // DOUBLE CHECK THIS
             stats.areaQ += state.numInSystem * delta;
 
             // Update area under B(t) curve (server busy time)
@@ -362,7 +351,6 @@ public:
 
     // ------------------------------------------------------------------------
     // HANDLE DEPARTURE
-    // Owner: ANGGOTA 2
     // ------------------------------------------------------------------------
     void handleDeparture(Event e)
     {
@@ -396,7 +384,6 @@ public:
 
     // ------------------------------------------------------------------------
     // CHECK TERMINATION
-    // Owner: ANGGOTA 2
     // ------------------------------------------------------------------------
     bool shouldTerminate()
     {
@@ -416,7 +403,6 @@ public:
 
     // ------------------------------------------------------------------------
     // CHECK WARMUP
-    // Owner: ANGGOTA 2
     // ------------------------------------------------------------------------
     bool isWarmupComplete()
     {
@@ -458,8 +444,6 @@ public:
 
     // ------------------------------------------------------------------------
     // RUN - Main simulation loop
-    // Owner: ANGGOTA 1 + ANGGOTA 2 (integration)
-    // TODO: Event processing loop
     // ------------------------------------------------------------------------
     RepResult run()
     {
@@ -521,7 +505,6 @@ public:
 
     // ------------------------------------------------------------------------
     // COMPUTE RESULTS
-    // Owner: ANGGOTA 3
     // ------------------------------------------------------------------------
     RepResult computeResults()
     {
@@ -547,11 +530,9 @@ public:
 
     // ------------------------------------------------------------------------
     // SCHEDULE EVENT (Helper)
-    // Owner: ANGGOTA 1
     // ------------------------------------------------------------------------
     void scheduleEvent(EventType type, double time)
     {
-        // TODO ANGGOTA 1: Create event and push to FEL
         Event newEvent;
         newEvent.type = type;
         newEvent.time = time;
@@ -570,7 +551,6 @@ public:
 
 // ============================================================================
 // SECTION 5: MULTI-REPLICATION CONTROLLER
-// Owner: ANGGOTA 2
 // ============================================================================
 
 std::vector<RepResult> runReplications(Params params) {
@@ -594,7 +574,6 @@ std::vector<RepResult> runReplications(Params params) {
 
 // ============================================================================
 // SECTION 6: STATISTICS & CONFIDENCE INTERVAL
-// Owner: ANGGOTA 3
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -770,12 +749,10 @@ std::vector<Summary> computeSummaries(std::vector<RepResult> &results)
 
 // ============================================================================
 // SECTION 7: CSV OUTPUT
-// Owner: ANGGOTA 2
 // ============================================================================
 
 // ----------------------------------------------------------------------------
 // WRITE PER-REPLICATION CSV
-// TODO ANGGOTA 2: Export detailed results
 // ----------------------------------------------------------------------------
 void writePerRepCSV(const std::vector<RepResult> &results, const std::string &outputDir, const std::string &filename)
 {
@@ -821,7 +798,6 @@ void writePerRepCSV(const std::vector<RepResult> &results, const std::string &ou
 
 // ----------------------------------------------------------------------------
 // WRITE SUMMARY CSV
-// TODO ANGGOTA 2: Export confidence intervals
 // ----------------------------------------------------------------------------
 void writeSummaryCSV(const std::vector<Summary> &summaries, const std::string &outputDir, const std::string &filename)
 {
@@ -864,13 +840,11 @@ void writeSummaryCSV(const std::vector<Summary> &summaries, const std::string &o
 }
 
 // ============================================================================
-// SECTION 8: CLI PARSER
-// Owner: ANGGOTA 2
+// CLI PARSER
 // ============================================================================
 
 // ----------------------------------------------------------------------------
 // PARSE COMMAND LINE ARGUMENTS
-// TODO ANGGOTA 2: Extract parameters from argv
 // ----------------------------------------------------------------------------
 
 // Helper function to parse comma-separated lambda values
@@ -964,11 +938,9 @@ Params parseArguments(int argc, char *argv[])
 
 // ----------------------------------------------------------------------------
 // PRINT HELP MESSAGE
-// TODO ANGGOTA 2: Display usage information
 // ----------------------------------------------------------------------------
 void printHelp()
 {
-    // TODO ANGGOTA 2: Print all available parameters and examples
     std::cout << "Usage: ./des_sim [OPTIONS]\n";
     std::cout << "\nOptions:\n";
     std::cout << "  --lambda <value>    Arrival rate (default: 0.9)\n";
@@ -979,16 +951,20 @@ void printHelp()
     std::cout << "  --reps <value>      Number of replications (default: 10)\n";
     std::cout << "  --seed <value>      Random seed (default: 12345)\n";
     std::cout << "  --queueCap <value>  Queue capacity (-1 = unlimited, default: -1)\n";
-    std::cout << "  --outdir <path>     Output directory (default: ./output/)\n";
+    std::cout << "  --outdir <path>     Output directory (default: ./)\n";
     std::cout << "  --term <mode>       Termination mode: 'served' or 'time' (default: served)\n";
     std::cout << "  --verbose           Enable verbose output\n";
+
+    std::cout << "\nExtra Options:\n";
+    std::cout << "  --deterministicService                      Use this flag for fixed service time instead of exponential\n";
+    std::cout << "  --arrivalSchedule <comma-separated values>  Comma-separated arrival rates for time-varying arrivals (ex: 0.1,0.5,0.9), must be specified with --arrivalScheduleArrival\n";
+    std::cout << "  --arrivalScheduleInterval <value>           Interval for arrival schedule, must be specified with --arrivalSchedule\n";
     std::cout << "\nExample:\n";
     std::cout << "   ./des_sim --lambda 0.9 --mu 1.0 --maxServed 20000 --warmup 1000 --reps 10 --seed 12345 --queueCap -1 --term served --outdir ./\n";
 }
 
 // ============================================================================
-// SECTION 9: VALIDATION & ANALYSIS
-// Owner: ANGGOTA 3
+// VALIDATION & ANALYSIS
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -1076,11 +1052,11 @@ void validateResults(Params p, std::vector<Summary> &summaries)
 
     if (valid)
     {
-        std::cout << "  ✓ PASSED - All metrics within " << threshold << "% of theory" << std::endl;
+        std::cout << "  [V] PASSED - All metrics within " << threshold << "% of theory" << std::endl;
     }
     else
     {
-        std::cout << "  ✗ WARNING - Some metrics exceed " << threshold << "% deviation" << std::endl;
+        std::cout << "  [X] WARNING - Some metrics exceed " << threshold << "% deviation" << std::endl;
         std::cout << "    (May need more replications or longer warmup)" << std::endl;
     }
 }
@@ -1121,7 +1097,7 @@ void verifyLittlesLaw(Params p, std::vector<Summary> &summaries, const std::vect
 
     std::cout << std::fixed << std::setprecision(6);
     std::cout << "\nFrom Simulation:" << std::endl;
-    std::cout << "  lambda_eff (arrival rate) : " << lambda_eff << std::endl;
+    std::cout << "  lambda_eff (avg from all reps)  : " << lambda_eff << std::endl;
     std::cout << "  W (measured)              : " << W_sim << std::endl;
     std::cout << "  ------------------------------------ " << std::endl;
     std::cout << "  L (measured)              : " << L_sim << std::endl;
@@ -1156,8 +1132,7 @@ void verifyLittlesLaw(Params p, std::vector<Summary> &summaries, const std::vect
 }
 
 // ============================================================================
-// SECTION 10: MAIN FUNCTION
-// Owner: ALL (integration point)
+// MAIN FUNCTION
 // ============================================================================
 
 int main(int argc, char *argv[])
@@ -1179,13 +1154,13 @@ int main(int argc, char *argv[])
     std::cout << "  Rho: " << (params.lambda / params.mu) << std::endl;
     std::cout << "  Replications: " << params.reps << std::endl;
     
-    // TODO ANGGOTA 2: Run replications
+    // Run replications
     std::vector<RepResult> results = runReplications(params);
     
-    // TODO ANGGOTA 3: Compute summaries
+    // ompute summaries
     std::vector<Summary> summaries = computeSummaries(results);
 
-    // ✅ ANGGOTA 3: Print results
+    // Print results
     std::cout << "\n=== SUMMARY STATISTICS ===" << std::endl;
     for (auto &s : summaries)
     {
@@ -1193,11 +1168,11 @@ int main(int argc, char *argv[])
                   << " [" << s.ci_lower << ", " << s.ci_upper << "]" << std::endl;
     }
 
-    // TODO ANGGOTA 2: Write CSV files
+    // Write CSV files
     writePerRepCSV(results, params.outdir, "results_per_rep.csv");
     writeSummaryCSV(summaries, params.outdir, "summary.csv");
 
-    // ✅ ANGGOTA 3: Validation
+    // Validation
     validateResults(params, summaries);
     verifyLittlesLaw(params, summaries, results);
 
@@ -1205,7 +1180,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
-// ============================================================================
-// END OF FILE
-// ============================================================================
