@@ -236,7 +236,7 @@ Verifikasi hasil simulasi menggunakan Little's Law:
 
 ## 🧪 Validasi & Testing
 
-### Test Case 1: Light Traffic (ρ = 0.3)
+### Test Case 1: Light Traffic (ρ = 0.3), Termination mode by SERVED
 
 ```bash
 ./des_sim --lambda 0.3 --mu 1.0 --maxServed 10000 --warmup 500 --reps 10 --term served
@@ -247,10 +247,10 @@ Verifikasi hasil simulasi menggunakan Little's Law:
 - W ≈ 1.43
 - Utilization ≈ 0.30
 
-### Test Case 2: Moderate Traffic (ρ = 0.5)
+### Test Case 2: Moderate Traffic (ρ = 0.5), Termination mode by TIME
 
 ```bash
-./des_sim --lambda 0.5 --mu 1.0 --maxServed 10000 --warmup 1000 --reps 10 --term served
+./des_sim --lambda 0.5 --mu 1.0 --horizonT 10000 --warmup 1000 --reps 10 --term time
 ```
 
 **Expected Results**:
@@ -258,10 +258,10 @@ Verifikasi hasil simulasi menggunakan Little's Law:
 - W ≈ 2.0
 - Utilization ≈ 0.50
 
-### Test Case 3: Heavy Traffic (ρ = 0.9)
+### Test Case 3: Heavy Traffic (ρ = 0.9), Termination mode by SERVED
 
 ```bash
-./des_sim --lambda 0.9 --mu 1.0 --maxServed 20000 --warmup 2000 --reps 15 --term served
+./des_sim --lambda 0.9 --mu 1.0 --maxServed 20000 --warmup 1000 --reps 10 --term served
 ```
 
 **Expected Results**:
