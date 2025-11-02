@@ -53,6 +53,8 @@ struct State
     bool serverBusy;                 // Server status
     double nextArrivalTime;          // Scheduled next arrival time
     std::queue<double> arrivalTimes; // Queue of customer arrival times
+    bool warmupComplete;
+
     // secra otomatis empty di awal queue
     State()
     {
@@ -60,6 +62,7 @@ struct State
         numInSystem = 0;
         serverBusy = false;
         nextArrivalTime = 0.0;
+        warmupComplete = false;
     }
 
     void reset()
@@ -68,6 +71,7 @@ struct State
         numInSystem = 0;
         serverBusy = false;
         nextArrivalTime = 0.0;
+        warmupComplete = false;
 
         while (!arrivalTimes.empty())
         {
@@ -90,7 +94,7 @@ struct Stats
     int numRejected;      // count of rejected customer (if queue capacity is exhausted the server is full )
     double warmupEndTime; // Time when warmup period ends
     
-    Stats() : totalDelay(0.0), areaQ(0.0), areaB(0.0), numServed(0), numArrived(0), warmupEndTime(0.0) {}
+    Stats() : totalDelay(0.0), areaQ(0.0), areaB(0.0), numServed(0), numArrived(0), totalServed(0), warmupEndTime(0.0) {}
     
     void reset()
     {
@@ -98,6 +102,7 @@ struct Stats
         areaQ = 0.0;
         areaB = 0.0;
         numServed = 0;
+        totalServed = 0;
         numArrived = 0;
         numRejected = 0;
         warmupEndTime = 0.0;
@@ -121,8 +126,9 @@ struct Params {
     std::string outdir;         // Output directory
 
     bool helpFlag = false;      // Help flag
+    bool verbose;               // Verbose mode
     
-    Params() : lambda(0.9), mu(1.0), maxServed(20000), horizonT(20000.0), warmup(1000), reps(10), seed(12345), queueCap(-1), termMode(BY_SERVED), outdir("./"), helpFlag(false) {}
+    Params() : lambda(0.9), mu(1.0), maxServed(20000), horizonT(20000.0), warmup(1000), reps(10), seed(12345), queueCap(-1), termMode(BY_SERVED), outdir("./"), helpFlag(false), verbose(false) {}
 
     bool isValid() {
         return lambda < mu;
@@ -244,10 +250,13 @@ public:
         if (isWarmupComplete())
         {
             // Calculate number in queue (excluding server)
-            int numInQueue = state.numInSystem - (state.serverBusy ? 1 : 0);
+            // int numInQueue = state.numInSystem - (state.serverBusy ? 1 : 0);
 
             // Update area under Q(t) curve (queue length over time)
-            stats.areaQ += numInQueue * delta;
+            // stats.areaQ += numInQueue * delta;
+
+            // DOUBLE CHECK THIS
+            stats.areaQ += state.numInSystem * delta;
 
             // Update area under B(t) curve (server busy time)
             stats.areaB += (state.serverBusy ? 1.0 : 0.0) * delta;
@@ -279,7 +288,8 @@ public:
             double departure_time = state.clock + rng.exponential(params.mu);
             scheduleEvent(DEPARTURE, departure_time);
 
-            std::cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << " -> SERVICE, depart at t=" << departure_time << std::endl;
+            if (params.verbose)
+                std::cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << " -> SERVICE, depart at t=" << departure_time << std::endl;
         }
         else
         {
@@ -288,13 +298,17 @@ public:
                 state.arrivalTimes.push(state.clock);
                 state.numInSystem++;
                 // adding arrival time into the state clock queue
-                std::cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << " -> QUEUE, number in system=" << state.numInSystem << std::endl;
+
+                if (params.verbose)
+                    std::cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << " -> QUEUE, number in system=" << state.numInSystem << std::endl;
             }
             else
             {
                 // queue is full, rejecting customer
                 stats.numRejected++;
-                std::cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << " -> REJECTED full both queue and server" << std::endl;
+
+                if (params.verbose)
+                    std::cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << " -> REJECTED full both queue and server" << std::endl;
             }
         }
     }
@@ -329,7 +343,8 @@ public:
             state.serverBusy = false;
         }
         
-        std::cout << "[DEPARTURE] Customer " << e.customerID << " at t=" << e.time << std::endl;
+        if (params.verbose)
+            std::cout << "[DEPARTURE] Customer " << e.customerID << " at t=" << e.time << std::endl;
     }
 
     // ------------------------------------------------------------------------
@@ -358,19 +373,39 @@ public:
     // ------------------------------------------------------------------------
     bool isWarmupComplete()
     {
-        if (params.termMode == BY_SERVED) {
-            if (stats.totalServed >= params.warmup) {
-                stats.warmupEndTime = state.clock;
-                // std::cout << "[WARMUP COMPLETE] at t=" << state.clock << std::endl;
-                return true;
+        if (state.warmupComplete)
+            return true;
+
+        bool complete = false;
+        double endTime = 0.0;
+
+        switch (params.termMode)
+        {
+        case BY_SERVED:
+            if (stats.totalServed >= params.warmup)
+            {
+                complete = true;
+                endTime = state.clock;
             }
-        } else if (params.termMode == BY_TIME) {
-            if (state.clock >= params.warmup) {
-                stats.warmupEndTime = params.warmup;
-                // std::cout << "[WARMUP COMPLETE] at t=" << params.warmup << std::endl;
-                return true;
+            break;
+
+        case BY_TIME:
+            if (state.clock >= params.warmup)
+            {
+                complete = true;
+                endTime = params.warmup;
             }
+            break;
         }
+
+        if (complete)
+        {
+            state.warmupComplete = true;
+            stats.warmupEndTime = endTime;
+            // std::cout << "[WARMUP COMPLETE] at t=" << endTime << std::endl;
+            return true;
+        }
+
         return false;
     }
 
@@ -472,11 +507,16 @@ public:
         Event newEvent;
         newEvent.type = type;
         newEvent.time = time;
-        newEvent.customerID = nextCustomerID++;
+        newEvent.customerID = nextCustomerID;
+
+        if (type == ARRIVAL) {
+            nextCustomerID++;
+        }
 
         FEL.push(newEvent);
 
-        std::cout << "[SCHEDULE] Event type= " << (type == ARRIVAL ? "ARRIVAL" : "DEPARTURE") << ", time= " << time << ", customerID= " << newEvent.customerID << std::endl;
+        if (params.verbose)
+            std::cout << "[SCHEDULE] Event type= " << (type == ARRIVAL ? "ARRIVAL" : "DEPARTURE") << ", time= " << time << ", customerID= " << newEvent.customerID << std::endl;
     }
 };
 
@@ -807,6 +847,9 @@ Params parseArguments(int argc, char *argv[])
         } else if (arg == "--outdir" && i + 1 < argc){
             params.outdir = argv[i + 1];
             ++i;
+        } else if (arg == "--verbose"){
+            params.verbose = true;
+            ++i;
         }      
     }
     
@@ -837,7 +880,8 @@ void printHelp()
     std::cout << "  --seed <value>      Random seed (default: 12345)\n";
     std::cout << "  --queueCap <value>  Queue capacity (-1 = unlimited, default: -1)\n";
     std::cout << "  --outdir <path>     Output directory (default: ./output/)\n";
-    std::cout << "  --term <mode>      Termination mode: 'served' or 'time' (default: served)\n";
+    std::cout << "  --term <mode>       Termination mode: 'served' or 'time' (default: served)\n";
+    std::cout << "  --verbose           Enable verbose output\n";
     std::cout << "\nExample:\n";
     std::cout << "   ./des_sim --lambda 0.9 --mu 1.0 --maxServed 20000 --warmup 1000 --reps 10 --seed 12345 --queueCap -1 --term served --outdir ./\n";
 }
