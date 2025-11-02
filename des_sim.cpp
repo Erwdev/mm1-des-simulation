@@ -8,10 +8,12 @@
 #include <vector>
 #include <random>
 #include <fstream>
+#include <sstream>
 #include <cmath>
 #include <string>
 #include <iomanip>
 #include <limits>
+#include <filesystem>
 const int MAX_ITER = 1000000;
 // ============================================================================
 // SECTION 1: ENUMS & CONSTANTS
@@ -91,10 +93,11 @@ struct Stats
     int numServed;        // Count of departed customers
     int totalServed;      // Total served customers including warmup
     int numArrived;       // Count of arrived customers
+    int totalArrived;     // Total arrived customers including warmup
     int numRejected;      // count of rejected customer (if queue capacity is exhausted the server is full )
     double warmupEndTime; // Time when warmup period ends
     
-    Stats() : totalDelay(0.0), areaQ(0.0), areaB(0.0), numServed(0), numArrived(0), totalServed(0), warmupEndTime(0.0) {}
+    Stats() : totalDelay(0.0), areaQ(0.0), areaB(0.0), numServed(0), totalArrived(0), totalServed(0), warmupEndTime(0.0) {}
     
     void reset()
     {
@@ -104,6 +107,7 @@ struct Stats
         numServed = 0;
         totalServed = 0;
         numArrived = 0;
+        totalArrived = 0;
         numRejected = 0;
         warmupEndTime = 0.0;
     }
@@ -125,23 +129,37 @@ struct Params {
     TerminationMode termMode;   // Termination mode
     std::string outdir;         // Output directory
 
+    // Scenario
+    bool deterministicService;              // fixed service time instead of exponential
+    bool varyingArrival;                    // enable time-varying arrival rate
+    std::vector<double> arrivalSchedule;    // time points for varying arrival rate
+    double arrivalScheduleInterval;         // interval for arrival schedule
+
     bool helpFlag = false;      // Help flag
     bool verbose;               // Verbose mode
     
-    Params() : lambda(0.9), mu(1.0), maxServed(20000), horizonT(20000.0), warmup(1000), reps(10), seed(12345), queueCap(-1), termMode(BY_SERVED), outdir("./"), helpFlag(false), verbose(false) {}
+    Params() : lambda(0.9), mu(1.0), maxServed(20000), horizonT(20000.0), warmup(1000),
+                reps(10), seed(12345), queueCap(-1), termMode(BY_SERVED), outdir("./"), 
+                deterministicService(false), varyingArrival(false), arrivalSchedule(), 
+                arrivalScheduleInterval(0.0), helpFlag(false), verbose(false) {}
 
     bool isValid() {
-        return lambda < mu;
+        if (lambda >= mu) return false;
+        if (varyingArrival) {
+            if (arrivalSchedule.empty() || arrivalScheduleInterval <= 0.0) return false;
+            for (double l : arrivalSchedule) if (l >= mu) return false;
+        }
+        return true;
     }
 };
 
 // ----------------------------------------------------------------------------
 // REPLICATION RESULT STRUCT
-// Owner: ANGGOTA 2
 // ----------------------------------------------------------------------------
 struct RepResult
 {
     int repID;
+    double effArrivalRate;
     double avgQ;        // Average queue length (L)
     double utilization; // Server utilization (rho)
     double avgDelay;    // Average time in system (W)
@@ -149,14 +167,13 @@ struct RepResult
     int numServed;
     double simTime;
 
-    RepResult() : repID(0), avgQ(0.0), utilization(0.0), avgDelay(0.0), avgWait(0.0), numServed(0), simTime(0.0) {}
+    RepResult() : repID(0), effArrivalRate(0.0), avgQ(0.0), utilization(0.0), avgDelay(0.0), avgWait(0.0), numServed(0), simTime(0.0) {}
 };
 
 // STRUCT SECTION ENDS HERE
 
 // ============================================================================
 // SECTION 3: RANDOM NUMBER GENERATOR CLASS
-// Owner: ANGGOTA 1
 // ============================================================================
 class RNG
 {
@@ -204,7 +221,6 @@ private:
 public:
     // ------------------------------------------------------------------------
     // CONSTRUCTOR
-    // Owner: ALL (call from main)
     // ------------------------------------------------------------------------
     DES(Params p) : params(p), rng(p.seed)
     {
@@ -213,8 +229,6 @@ public:
 
     // ------------------------------------------------------------------------
     // INIT - Initialize simulation
-    // Owner: ANGGOTA 1
-    // TODO: Reset state, stats, schedule first arrival
     // ------------------------------------------------------------------------
     void init()
     {
@@ -239,8 +253,6 @@ public:
 
     // ------------------------------------------------------------------------
     // UPDATE TIME INTEGRALS
-    // Owner: ANGGOTA 3
-    // ✅ COMPLETED - Update area under Q(t) and B(t) curves
     // ------------------------------------------------------------------------
     void updateTimeIntegrals(double previousTime)
     {
@@ -249,13 +261,7 @@ public:
         // Check if past warmup period
         if (isWarmupComplete())
         {
-            // Calculate number in queue (excluding server)
-            // int numInQueue = state.numInSystem - (state.serverBusy ? 1 : 0);
-
             // Update area under Q(t) curve (queue length over time)
-            // stats.areaQ += numInQueue * delta;
-
-            // DOUBLE CHECK THIS
             stats.areaQ += state.numInSystem * delta;
 
             // Update area under B(t) curve (server busy time)
@@ -263,10 +269,31 @@ public:
         }
     }
 
+
+    double getArrivalTime() {
+        double currentLambda = params.lambda;
+
+        if (params.varyingArrival && !params.arrivalSchedule.empty()) {
+            // Determine which interval we are in
+            int index = static_cast<int>(state.clock / params.arrivalScheduleInterval);
+            index = index % params.arrivalSchedule.size();
+            currentLambda = params.arrivalSchedule[index];
+        }
+
+        return state.clock + rng.exponential(currentLambda);
+    }
+
+    // Poisson or Deterministic service time
+    double getServiceTime() {
+        if (params.deterministicService) {
+            return state.clock + (1.0 / params.mu);
+        } else {
+            return state.clock + rng.exponential(params.mu);
+        }
+    }
+
     // ------------------------------------------------------------------------
     // HANDLE ARRIVAL
-    // Owner: ANGGOTA 1
-    // TODO: Process arrival event
     // ------------------------------------------------------------------------
     void handleArrival(Event e)
     {
@@ -274,18 +301,22 @@ public:
         double prev_clock = state.clock;
         state.clock = e.time;
         updateTimeIntegrals(prev_clock);
-        stats.numArrived++;
+    
 
-        double next_arrival = state.clock + rng.exponential(params.lambda);
-
+        double next_arrival = getArrivalTime();
         scheduleEvent(ARRIVAL, next_arrival);
         if (!state.serverBusy)
         {
             state.serverBusy = true;
             state.numInSystem++;
             state.arrivalTimes.push(state.clock); // record arrival time
+            
+            if (isWarmupComplete()) {
+                    stats.numArrived++;
+                }
+            stats.totalArrived++;
 
-            double departure_time = state.clock + rng.exponential(params.mu);
+            double departure_time = getServiceTime();
             scheduleEvent(DEPARTURE, departure_time);
 
             if (params.verbose)
@@ -298,6 +329,11 @@ public:
                 state.arrivalTimes.push(state.clock);
                 state.numInSystem++;
                 // adding arrival time into the state clock queue
+
+                if (isWarmupComplete()) {
+                    stats.numArrived++;
+                }
+                stats.totalArrived++;
 
                 if (params.verbose)
                     std::cout << "[ARRIVAL] Customer " << e.customerID << " at t=" << e.time << " -> QUEUE, number in system=" << state.numInSystem << std::endl;
@@ -315,7 +351,6 @@ public:
 
     // ------------------------------------------------------------------------
     // HANDLE DEPARTURE
-    // Owner: ANGGOTA 2
     // ------------------------------------------------------------------------
     void handleDeparture(Event e)
     {
@@ -337,7 +372,7 @@ public:
 
         // Check next in queue if exists
         if (!state.arrivalTimes.empty()) {
-            double departureTime = state.clock + rng.exponential(params.mu);
+            double departureTime = getServiceTime();
             scheduleEvent(DEPARTURE, departureTime);
         } else {
             state.serverBusy = false;
@@ -349,7 +384,6 @@ public:
 
     // ------------------------------------------------------------------------
     // CHECK TERMINATION
-    // Owner: ANGGOTA 2
     // ------------------------------------------------------------------------
     bool shouldTerminate()
     {
@@ -369,7 +403,6 @@ public:
 
     // ------------------------------------------------------------------------
     // CHECK WARMUP
-    // Owner: ANGGOTA 2
     // ------------------------------------------------------------------------
     bool isWarmupComplete()
     {
@@ -411,8 +444,6 @@ public:
 
     // ------------------------------------------------------------------------
     // RUN - Main simulation loop
-    // Owner: ANGGOTA 1 + ANGGOTA 2 (integration)
-    // TODO: Event processing loop
     // ------------------------------------------------------------------------
     RepResult run()
     {
@@ -449,9 +480,9 @@ public:
                 std::cout << "[WARMUP COMPLETE] Warmup period ended at t=" << stats.warmupEndTime << std::endl;
             }
 
-            if (stats.numArrived % 1000 == 0)
+            if (stats.totalArrived % 1000 == 0)
             {
-                std::cout << "[PROGRESS]ITER:" << iter << " Arrived: " << stats.numArrived
+                std::cout << "[PROGRESS]ITER:" << iter << " Arrived: " << stats.totalArrived
                           << ", Served: " << stats.numServed
                           << ", Rejected: " << stats.numRejected
                           << ", Clock: " << state.clock << std::endl;
@@ -474,7 +505,6 @@ public:
 
     // ------------------------------------------------------------------------
     // COMPUTE RESULTS
-    // Owner: ANGGOTA 3
     // ------------------------------------------------------------------------
     RepResult computeResults()
     {
@@ -486,6 +516,7 @@ public:
             period = state.clock;
 
         // Calculate performance metrics
+        result.effArrivalRate = (period > 0) ? (stats.numArrived / period) : 0.0;
         result.avgQ = (period > 0) ? (stats.areaQ / period) : 0.0;
         result.utilization = (period > 0) ? (stats.areaB / period) : 0.0;
         result.avgDelay = (stats.numServed > 0) ? (stats.totalDelay / stats.numServed) : 0.0;
@@ -499,11 +530,9 @@ public:
 
     // ------------------------------------------------------------------------
     // SCHEDULE EVENT (Helper)
-    // Owner: ANGGOTA 1
     // ------------------------------------------------------------------------
     void scheduleEvent(EventType type, double time)
     {
-        // TODO ANGGOTA 1: Create event and push to FEL
         Event newEvent;
         newEvent.type = type;
         newEvent.time = time;
@@ -522,7 +551,6 @@ public:
 
 // ============================================================================
 // SECTION 5: MULTI-REPLICATION CONTROLLER
-// Owner: ANGGOTA 2
 // ============================================================================
 
 std::vector<RepResult> runReplications(Params params) {
@@ -546,7 +574,6 @@ std::vector<RepResult> runReplications(Params params) {
 
 // ============================================================================
 // SECTION 6: STATISTICS & CONFIDENCE INTERVAL
-// Owner: ANGGOTA 3
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -722,29 +749,40 @@ std::vector<Summary> computeSummaries(std::vector<RepResult> &results)
 
 // ============================================================================
 // SECTION 7: CSV OUTPUT
-// Owner: ANGGOTA 2
 // ============================================================================
 
 // ----------------------------------------------------------------------------
 // WRITE PER-REPLICATION CSV
-// TODO ANGGOTA 2: Export detailed results
 // ----------------------------------------------------------------------------
-void writePerRepCSV(std::vector<RepResult> &results, std::string filename)
+void writePerRepCSV(const std::vector<RepResult> &results, const std::string &outputDir, const std::string &filename)
 {
-    std::ofstream outFile(filename);
+    std::filesystem::path dirPath(outputDir);
+    std::filesystem::path filePath = dirPath / filename; // Safe concatenation
+
+    // Ensure directory exists
+    if (!std::filesystem::exists(dirPath))
+    {
+        std::error_code ec;
+        if (!std::filesystem::create_directories(dirPath, ec))
+        {
+            std::cerr << "Error: Could not create directory " << dirPath << ". " << ec.message() << "\n";
+            return;
+        }
+    }
+
+    std::ofstream outFile(filePath);
     if (!outFile.is_open())
     {
-        std::cerr << "Error: Could not open file " << filename << " for writing.\n";
+        std::cerr << "Error: Could not open file " << filePath << " for writing.\n";
         return;
     }
 
-    // Write CSV header
-    outFile << "RepID,AvgQ,Utilization,AvgDelay,AvgWait,NumServed,SimTime\n";
+    outFile << "RepID,EffArrival,AvgQ,Utilization,AvgDelay,AvgWait,NumServed,SimTime\n";
 
-    // Write each RepResult
     for (const auto &res : results)
     {
         outFile << res.repID << ","
+                << std::fixed << std::setprecision(4) << res.effArrivalRate << ","
                 << std::fixed << std::setprecision(4) << res.avgQ << ","
                 << std::fixed << std::setprecision(4) << res.utilization << ","
                 << std::fixed << std::setprecision(4) << res.avgDelay << ","
@@ -755,26 +793,37 @@ void writePerRepCSV(std::vector<RepResult> &results, std::string filename)
     }
 
     outFile.close();
-    std::cout << "CSV file written to: " << filename << "\n";
+    std::cout << "CSV file written to: " << filePath << "\n";
 }
 
 // ----------------------------------------------------------------------------
 // WRITE SUMMARY CSV
-// TODO ANGGOTA 2: Export confidence intervals
 // ----------------------------------------------------------------------------
-void writeSummaryCSV(std::vector<Summary> &summaries, std::string filename)
+void writeSummaryCSV(const std::vector<Summary> &summaries, const std::string &outputDir, const std::string &filename)
 {
-    std::ofstream outFile(filename);
+    std::filesystem::path dirPath(outputDir);
+    std::filesystem::path filePath = dirPath / filename;
+
+    // Ensure directory exists
+    if (!std::filesystem::exists(dirPath))
+    {
+        std::error_code ec;
+        if (!std::filesystem::create_directories(dirPath, ec))
+        {
+            std::cerr << "Error: Could not create directory " << dirPath << ". " << ec.message() << "\n";
+            return;
+        }
+    }
+
+    std::ofstream outFile(filePath);
     if (!outFile.is_open())
     {
-        std::cerr << "Error: Could not open file " << filename << " for writing.\n";
+        std::cerr << "Error: Could not open file " << filePath << " for writing.\n";
         return;
     }
 
-    // Write CSV header
     outFile << "Metric,Mean,StdDev,CI_Lower,CI_Upper,CI_Width\n";
 
-    // Write each summary
     for (const auto &s : summaries)
     {
         outFile << s.metric << ","
@@ -787,18 +836,28 @@ void writeSummaryCSV(std::vector<Summary> &summaries, std::string filename)
     }
 
     outFile.close();
-    std::cout << "Summary CSV file written to: " << filename << "\n";
+    std::cout << "Summary CSV file written to: " << filePath << "\n";
 }
 
 // ============================================================================
-// SECTION 8: CLI PARSER
-// Owner: ANGGOTA 2
+// CLI PARSER
 // ============================================================================
 
 // ----------------------------------------------------------------------------
 // PARSE COMMAND LINE ARGUMENTS
-// TODO ANGGOTA 2: Extract parameters from argv
 // ----------------------------------------------------------------------------
+
+// Helper function to parse comma-separated lambda values
+std::vector<double> parseLambdaVector(const std::string& arg) {
+    std::vector<double> lambdas;
+    std::stringstream ss(arg);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        lambdas.push_back(std::stod(item));
+    }
+    return lambdas;
+}
+
 Params parseArguments(int argc, char *argv[])
 {    
     Params params;
@@ -850,7 +909,22 @@ Params parseArguments(int argc, char *argv[])
         } else if (arg == "--verbose"){
             params.verbose = true;
             ++i;
-        }      
+        }
+
+        // lambda table for varying arrival
+        else if (arg == "--arrivalSchedule" && i + 1 < argc){
+            params.arrivalSchedule = parseLambdaVector(argv[i + 1]);
+            params.varyingArrival = !params.arrivalSchedule.empty();
+            ++i;
+        } else if (arg == "--arrivalScheduleInterval" && i + 1 < argc){
+            params.arrivalScheduleInterval = std::stod(argv[i + 1]);
+            ++i;
+        }
+
+        else if (arg == "--deterministicService"){
+            params.deterministicService = true;
+            ++i;
+        }
     }
     
     // Validate  
@@ -864,11 +938,9 @@ Params parseArguments(int argc, char *argv[])
 
 // ----------------------------------------------------------------------------
 // PRINT HELP MESSAGE
-// TODO ANGGOTA 2: Display usage information
 // ----------------------------------------------------------------------------
 void printHelp()
 {
-    // TODO ANGGOTA 2: Print all available parameters and examples
     std::cout << "Usage: ./des_sim [OPTIONS]\n";
     std::cout << "\nOptions:\n";
     std::cout << "  --lambda <value>    Arrival rate (default: 0.9)\n";
@@ -879,16 +951,20 @@ void printHelp()
     std::cout << "  --reps <value>      Number of replications (default: 10)\n";
     std::cout << "  --seed <value>      Random seed (default: 12345)\n";
     std::cout << "  --queueCap <value>  Queue capacity (-1 = unlimited, default: -1)\n";
-    std::cout << "  --outdir <path>     Output directory (default: ./output/)\n";
+    std::cout << "  --outdir <path>     Output directory (default: ./)\n";
     std::cout << "  --term <mode>       Termination mode: 'served' or 'time' (default: served)\n";
     std::cout << "  --verbose           Enable verbose output\n";
+
+    std::cout << "\nExtra Options:\n";
+    std::cout << "  --deterministicService                      Use this flag for fixed service time instead of exponential\n";
+    std::cout << "  --arrivalSchedule <comma-separated values>  Comma-separated arrival rates for time-varying arrivals (ex: 0.1,0.5,0.9), must be specified with --arrivalScheduleArrival\n";
+    std::cout << "  --arrivalScheduleInterval <value>           Interval for arrival schedule, must be specified with --arrivalSchedule\n";
     std::cout << "\nExample:\n";
     std::cout << "   ./des_sim --lambda 0.9 --mu 1.0 --maxServed 20000 --warmup 1000 --reps 10 --seed 12345 --queueCap -1 --term served --outdir ./\n";
 }
 
 // ============================================================================
-// SECTION 9: VALIDATION & ANALYSIS
-// Owner: ANGGOTA 3
+// VALIDATION & ANALYSIS
 // ============================================================================
 
 // ----------------------------------------------------------------------------
@@ -900,6 +976,12 @@ void validateResults(Params p, std::vector<Summary> &summaries)
     std::cout << "\n==================================================" << std::endl;
     std::cout << "  THEORETICAL VS SIMULATION COMPARISON" << std::endl;
     std::cout << "==================================================" << std::endl;
+
+    if (p.varyingArrival || p.deterministicService|| p.queueCap > 0)
+    {
+        std::cout << "\nNote: Theoretical vs Simulation Comparison is only available for M/M/1 sytem" << std::endl;
+        return;
+    }
 
     // Calculate theoretical M/M/1 results
     double rho = p.lambda / p.mu;
@@ -970,11 +1052,11 @@ void validateResults(Params p, std::vector<Summary> &summaries)
 
     if (valid)
     {
-        std::cout << "  ✓ PASSED - All metrics within " << threshold << "% of theory" << std::endl;
+        std::cout << "  [V] PASSED - All metrics within " << threshold << "% of theory" << std::endl;
     }
     else
     {
-        std::cout << "  ✗ WARNING - Some metrics exceed " << threshold << "% deviation" << std::endl;
+        std::cout << "  [X] WARNING - Some metrics exceed " << threshold << "% deviation" << std::endl;
         std::cout << "    (May need more replications or longer warmup)" << std::endl;
     }
 }
@@ -982,12 +1064,12 @@ void validateResults(Params p, std::vector<Summary> &summaries)
 // ----------------------------------------------------------------------------
 // VERIFY LITTLE'S LAW
 // ----------------------------------------------------------------------------
-void verifyLittlesLaw(Params p, std::vector<Summary> &summaries)
+void verifyLittlesLaw(Params p, std::vector<Summary> &summaries, const std::vector<RepResult> &results)
 {
     std::cout << "\n==================================================" << std::endl;
     std::cout << "  LITTLE'S LAW VERIFICATION" << std::endl;
     std::cout << "==================================================" << std::endl;
-    std::cout << "\nLittle's Law: L = λ × W" << std::endl;
+    std::cout << "\nLittle's Law: L = lambda_eff x W" << std::endl;
 
     // Find L and W from summaries
     double L_sim = 0.0, W_sim = 0.0;
@@ -1003,17 +1085,25 @@ void verifyLittlesLaw(Params p, std::vector<Summary> &summaries)
         }
     }
 
+    double lambda_eff = 0.0;
+
+    // Calculate effective arrival rate from results
+    for(const auto& res : results) {
+        lambda_eff = (lambda_eff + res.effArrivalRate) / 2.0;
+    }
+
     // Calculate L using Little's Law
-    double L_littles = p.lambda * W_sim;
+    double L_littles = lambda_eff * W_sim;
 
     std::cout << std::fixed << std::setprecision(6);
     std::cout << "\nFrom Simulation:" << std::endl;
-    std::cout << "  L (measured)      : " << L_sim << std::endl;
-    std::cout << "  W (measured)      : " << W_sim << std::endl;
-    std::cout << "  λ (arrival rate)  : " << p.lambda << std::endl;
+    std::cout << "  lambda_eff (avg from all reps)  : " << lambda_eff << std::endl;
+    std::cout << "  W (measured)              : " << W_sim << std::endl;
+    std::cout << "  ------------------------------------ " << std::endl;
+    std::cout << "  L (measured)              : " << L_sim << std::endl;
 
     std::cout << "\nLittle's Law Calculation:" << std::endl;
-    std::cout << "  L = λ × W         : " << L_littles << std::endl;
+    std::cout << "  L = lambda_eff x W        : " << L_littles << std::endl;
 
     // Calculate deviation
     double deviation = std::abs(L_sim - L_littles) / L_sim * 100.0;
@@ -1024,15 +1114,15 @@ void verifyLittlesLaw(Params p, std::vector<Summary> &summaries)
     std::cout << "\nVerification Status:" << std::endl;
     if (deviation < 1.0)
     {
-        std::cout << "  ✓ EXCELLENT - Little's Law holds (< 1% deviation)" << std::endl;
+        std::cout << "  [V] EXCELLENT - Little's Law holds (< 1% deviation)" << std::endl;
     }
     else if (deviation < 5.0)
     {
-        std::cout << "  ✓ GOOD - Little's Law verified (< 5% deviation)" << std::endl;
+        std::cout << "  [V] GOOD - Little's Law verified (< 5% deviation)" << std::endl;
     }
     else
     {
-        std::cout << "  ✗ WARNING - Significant deviation from Little's Law" << std::endl;
+        std::cout << "  [X] WARNING - Significant deviation from Little's Law" << std::endl;
     }
 
     std::cout << "\nNote: Small deviations are expected due to:" << std::endl;
@@ -1042,8 +1132,7 @@ void verifyLittlesLaw(Params p, std::vector<Summary> &summaries)
 }
 
 // ============================================================================
-// SECTION 10: MAIN FUNCTION
-// Owner: ALL (integration point)
+// MAIN FUNCTION
 // ============================================================================
 
 int main(int argc, char *argv[])
@@ -1065,13 +1154,13 @@ int main(int argc, char *argv[])
     std::cout << "  Rho: " << (params.lambda / params.mu) << std::endl;
     std::cout << "  Replications: " << params.reps << std::endl;
     
-    // TODO ANGGOTA 2: Run replications
+    // Run replications
     std::vector<RepResult> results = runReplications(params);
     
-    // TODO ANGGOTA 3: Compute summaries
+    // ompute summaries
     std::vector<Summary> summaries = computeSummaries(results);
 
-    // ✅ ANGGOTA 3: Print results
+    // Print results
     std::cout << "\n=== SUMMARY STATISTICS ===" << std::endl;
     for (auto &s : summaries)
     {
@@ -1079,19 +1168,15 @@ int main(int argc, char *argv[])
                   << " [" << s.ci_lower << ", " << s.ci_upper << "]" << std::endl;
     }
 
-    // TODO ANGGOTA 2: Write CSV files
-    writePerRepCSV(results, params.outdir + "results_per_rep.csv");
-    writeSummaryCSV(summaries, params.outdir + "summary.csv");
+    // Write CSV files
+    writePerRepCSV(results, params.outdir, "results_per_rep.csv");
+    writeSummaryCSV(summaries, params.outdir, "summary.csv");
 
-    // ✅ ANGGOTA 3: Validation
+    // Validation
     validateResults(params, summaries);
-    verifyLittlesLaw(params, summaries);
+    verifyLittlesLaw(params, summaries, results);
 
     std::cout << "\n=== SIMULATION COMPLETE ===" << std::endl;
 
     return 0;
 }
-
-// ============================================================================
-// END OF FILE
-// ============================================================================
